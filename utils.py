@@ -65,6 +65,26 @@ class InvokeNLP(beam.DoFn):
         yield response
 
 
+class InvokeNLPBatch(beam.DoFn):
+
+    def process(self, element):
+        # element = DottedDict(documentReference)  # TODO Remove this
+        credentials, project = google.auth.default()
+        from google.auth.transport.requests import AuthorizedSession
+        import uuid
+        authed_session = AuthorizedSession(credentials)
+        url = URL
+        payload = {
+            'nlp_service': NLP_SERVICE,
+            'document_content': element.data,
+        }
+        resp = authed_session.post(url, data=payload)
+        response = resp.json()
+        response['id'] = uuid.uuid4().hex[:8]
+        response['documentReference'] = element.id
+        response['patient'] = element.subject.reference
+        yield response
+
 class AnalyzeLines(beam.PTransform):
     def expand(self, pcoll):
         return (
@@ -72,6 +92,13 @@ class AnalyzeLines(beam.PTransform):
             | "Invoke NLP API" >> beam.ParDo(InvokeNLP())
         )
 
+
+class AnalyzeLinesBatch(beam.PTransform):
+    def expand(self, pcoll):
+        return (
+            pcoll
+            | "Invoke NLP API" >> beam.ParDo(InvokeNLPBatch())
+        )
 
 class getEntityMentions(beam.DoFn):
     def process(self, element):
